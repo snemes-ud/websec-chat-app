@@ -87,13 +87,14 @@ function sendMessage() {
     time: new Date().getTime()
   };
 
-  let newMsg = rtdb.push(messagesRef, msgObj);
+  rtdb.push(messagesRef, msgObj);
+  $('#message-text').get(0).value = "";
 }
 
 function renderMessage(msgId, msgObj) {
   let msgContainer = document.createElement("div");
   msgContainer.id = msgId;
   msgContainer.class = "message-container";
-  msgContainer.innerHTML = "<b>" + sanitizeString(msgObj.author) + "</b>: " + sanitizeString(msgObj.content) + " | sent at " + msgObj.time;
+  msgContainer.innerHTML = "<b>" + sanitizeString(msgObj.author) + "</b>: " + sanitizeString(msgObj.content) + " | sent at " + sanitizeString(msgObj.time.toString());
   $('#chat-feed').append(msgContainer);
 }
