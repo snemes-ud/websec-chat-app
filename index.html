@@ -17,34 +17,40 @@
 
 <body>
   <div id="start-view">
-    <h1>Welcome to Bad Chat You Should Never Use™</h1>
+    <h1>Welcome to Insecure Chat (Don't Use It)™ <p class="verysmalltext">not actually trademarked in case you were wondering</p></h1>
 
     <div id="login">
       <h2>Log in to start chatting!</h2>
       <input type="email" id="login-email" value="" autocomplete="off" placeholder="Email" />
       <input type="password" id="login-password" value="" autocomplete="off" placeholder="Password" />
       <button type="button" id="login-submit">Submit</button>
-      <p class="smalltext">If you don't have an account, <a href="#" id="show-register">register</a></p>
-      <p class="smalltext">Forgot your password? Request a <a href="#" id="reset-password">password reset</a>.</p>
-
-      <h2>Log in with <a href="#" id="google-login">Google</a></h2>
+      <p class="smalltext">If you don't have an account, <a href="#" class="show-register">register</a></p>
+      <p class="smalltext">Forgot your password? Request a <a href="#" class="reset-password">password reset</a>.</p>
     </div>
 
     <div id="register" hidden>
       <h2>Sign up with email</h2>
       <input type="email" id="register-email" value="" autocomplete="off" placeholder="Email" />
+      <input type="text" id="register-username" value="" autocomplete="off" placeholder="Screen name" />
       <input type="password" id="register-password" value="" autocomplete="off" placeholder="Password" />
       <input type="password" id="register-password-confirm" value="" autocomplete="off" placeholder="Repeat password" />
       <button type="button" id="register-submit">Submit</button>
-      <p class="smalltext">If you already have an account, <a href="#" id="show-login">log in</a>.</p>
+      <p class="smalltext">If you already have an account, <a href="#" class="show-login">log in</a>.</p>
+    </div>
+
+    <div id="forgot-password" hidden>
+      <h2>Reset your password</h2>
+      <p>Enter your email address below and an email will be sent containing directions on how to reset your password.</p>
+      <input type="email" id="forgot-email" value="" autocomplete="off" placeholder="Email" />
+      <button type="button" id="forgot-email-submit">Submit</button>
+      
+      <p class="smalltext">Back to <a href="#" class="show-login">login page</a>.</p>
     </div>
 
   </div>
 
   <div id="chat-view" hidden>
-    <div id="chat-feed">
-      
-    </div>
+    <div id="chat-feed"><!-- This is dynamically filled in with messages fetched from the database --></div>
 
     <div id="footer">
       <div id="user-info">
@@ -57,7 +63,12 @@
         <button type="button" id="message-send">Send</button>
       </div>
       
-      <div id="channel-manager" class="white-text">Channel switcher/creator here</p>
+      <div id="channel-manager" class="white-text">
+        <p>Channel:</p>
+        <select id="channel-select">
+          <!-- Filled in dynamically -->
+        </select>
+      </div>
     </div>
   </div>
 

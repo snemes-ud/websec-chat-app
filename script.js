@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.2/firebase-app.js";
 import * as rtdb from "https://www.gstatic.com/firebasejs/9.0.2/firebase-database.js";
-import {getAuth, createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/9.0.2/firebase-auth.js";
+import {getAuth, createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.0.2/firebase-auth.js";
 
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
@@ -22,8 +22,12 @@ const app = initializeApp(firebaseConfig);
 
 const db = rtdb.getDatabase(app);
 const titleRef = rtdb.ref(db, "/");
-const messagesRef = rtdb.child(titleRef, "messages");
+const channelsRef = rtdb.child(titleRef, "channels");
+//const messagesRef = rtdb.child(titleRef, "messages");
 const usersRef = rtdb.child(titleRef, "users");
+
+let currChannelRef = null; // ref for whatever the currently viewed channel is at any given time
+let currMessagesRef = null;
 
 const auth = getAuth();
 onAuthStateChanged(auth, (usr) => { // automatically log in if authed
@@ -33,12 +37,11 @@ onAuthStateChanged(auth, (usr) => { // automatically log in if authed
   }
 });
 
-//const googleProvider = new GoogleAuthProvider();
-
 
 // User data (move to cloud verification at some point)
 let user = null;
 let uidToDisplayname = {}; // dictionary that maps uids to display names so we're not constantly asking the db
+let loggedin = false;
 
 // == Set up event listeners ==
 // Email & Password login
@@ -56,14 +59,9 @@ $("#login-password").keypress(function(event) {
   }
 });
 
-$("#show-register").click(function() {
+$(".show-register").click(function() {
   $("#login").hide();
   $("#register").show();
-});
-
-// Google login
-$("#google-login").click(function() {
-
 });
 
 // Register
@@ -87,10 +85,26 @@ $("#register-password-confirm").keypress(function(event) {
   }
 });
 
-$("#show-login").click(function() {
+$(".show-login").click(function() {
   $("#register").hide();
+  $("#forgot-password").hide();
   $("#login").show();
 });
+
+// Password reset
+$("#forgot-email").keypress(function(event) {
+  if(event.which == 13) {
+    event.preventDefault();
+    sendPasswordEmail();
+  }
+});
+$("#forgot-email-submit").click(sendPasswordEmail);
+
+$(".reset-password").click(function() {
+  $("#login").hide();
+  $("#forgot-password").show();
+});
+
 
 // Signout button
 $("#signout-button").click(function() {
@@ -110,7 +124,15 @@ $("#message-text").keypress(function(event) {
   }
 });
 
+// Channel switcher
+$("#channel-select").change(function() {
+  let selectBox = $("#channel-select")[0];
+  let optionId = selectBox[selectBox.selectedIndex].id;
+  setChannel(optionId);
+});
+
 // == Utility functions ==
+// Attempt to prevent XSS. Pass every string the user has any control over through this
 function sanitizeString(str) {
   // Shamelessly taken from stackoverflow: https://stackoverflow.com/questions/6221067/display-html-markup-in-browser-without-it-being-rendered
   // Hope it works!
@@ -128,8 +150,18 @@ function sanitizeString(str) {
   });
 }
 
+// Initializes the chat feed, only called upon login/page load
 function initChatFeed() {
-  rtdb.onChildAdded(messagesRef, ss => {
+  // for some reason, this function is getting run twice if logging in from scratch
+  // this is just a measure to make sure that doesn't happen since I can't figure out why
+  if(loggedin) {
+    return;
+  }
+
+  currChannelRef = rtdb.child(channelsRef, "main");
+  currMessagesRef = rtdb.child(currChannelRef, "messages");
+
+  rtdb.onChildAdded(currMessagesRef, ss => {
     renderMessage(ss.key, ss.toJSON());
     $("#chat-feed").scrollTop($("#chat-feed")[0].scrollHeight) // scroll to new message
   });
@@ -142,11 +174,28 @@ function initChatFeed() {
   getDisplayName(user.uid).then((name) => {
     $('#current-user').html(sanitizeString(name));
   });
+
+  rtdb.onChildAdded(channelsRef, (ss) => {
+    let option = document.createElement("option");
+    option.innerHTML = sanitizeString(ss.toJSON().name);
+    option.id = ss.key;
+    $("#channel-select").append(option);
+  });
+
+  loggedin = true;
 }
 
+// Sends a message to the current channel
 function sendMessage() {
   let msgText = $('#message-text').val().trim();
+
+  // don't accept empty messages
   if(msgText.length < 1) {
+    return;
+  }
+
+  // make sure it's not a command (we don't want valid commands being posted to chat, but we do want to embarrass people who mistype commands :) )
+  if(parseForCommand(msgText)) {
     return;
   }
 
@@ -156,10 +205,37 @@ function sendMessage() {
     time: new Date().getTime()
   };
 
-  rtdb.push(messagesRef, msgObj);
+  rtdb.push(currMessagesRef, msgObj);
   $('#message-text')[0].value = "";
 }
 
+// Checks if str is a valid chat command, runs the command if it is
+// Returns false if not a valid command, true if it is
+function parseForCommand(str) {
+  if(!str.startsWith('/')) {
+    return false;
+  }
+
+  let split = str.split(" ");
+  if(split.length != 2) {
+    return false;
+  }
+  else if(split[0] == "/createchannel") {
+    let channelName = split[1];
+    if(channelName.length < 1 || channelName.length > 50) {
+      return;
+    }
+
+    createChannel(channelName);
+
+    $('#message-text')[0].value = "";
+    return true;
+  }
+
+  return false;
+}
+
+// Renders the given message to the page
 function renderMessage(msgId, msgObj) {
   let msgContainer = document.createElement("div");
   msgContainer.id = msgId;
@@ -170,6 +246,7 @@ function renderMessage(msgId, msgObj) {
   })
 }
 
+// Submit login info
 function loginSubmit() {
   let loginEmail = $("#login-email").val().trim();
   let loginPassword = $("#login-password").val();
@@ -186,15 +263,21 @@ function loginSubmit() {
   );
 }
 
+// Submit registration info
 function registerSubmit() {
   let registerEmail = $("#register-email").val().trim();
-  let newDisplayName = registerEmail.split("@")[0];
+  let registerUsername = $("#register-username").val().trim();
+
+  // let's not have empty usernames
+  if(registerUsername.length < 1) {
+    return;
+  }
 
   // Confirm passwords match
   let registerPassword = $("#register-password").val();
   let registerPasswordConfirm = $("#register-password-confirm").val();
 
-  if(registerPassword != registerPasswordConfirm || registerPassword.length < 4) {
+  if(registerPassword != registerPasswordConfirm) {
     return;
   }
 
@@ -207,7 +290,8 @@ function registerSubmit() {
       if(user.uid) {
         let newUserRef = rtdb.child(usersRef, user.uid.toString());
         rtdb.set(newUserRef, {
-          displayName: newDisplayName,
+          displayName: registerUsername,
+          role: "user"
         });
       }
 
@@ -219,6 +303,48 @@ function registerSubmit() {
   );
 }
 
+// Send email for forgotten password
+function sendPasswordEmail() {
+  sendPasswordResetEmail(auth, $("#forgot-email").val().trim())
+    .then(function() {
+      console.log("I guess it sent?");
+    })
+    .catch((error) => {
+      console.log(error.message);
+    }
+  );
+}
+
+// Handles everything related to changing channels
+// (clear messages, disconnect listener for previous channel, set up new channel)
+function setChannel(channelId) {
+  console.log("set channel to " + channelId);
+
+  // disconnect previous channel
+  rtdb.off(currChannelRef);
+  rtdb.off(currMessagesRef);
+
+  // clear messages
+  $("#chat-feed").empty();
+
+  // set new refs and listener
+  currChannelRef = rtdb.child(channelsRef, channelId);
+  currMessagesRef = rtdb.child(currChannelRef, "messages");
+
+  rtdb.onChildAdded(currMessagesRef, ss => {
+    renderMessage(ss.key, ss.toJSON());
+    $("#chat-feed").scrollTop($("#chat-feed")[0].scrollHeight) // scroll to new message
+  });
+}
+
+// Creates a new channel with the given name
+function createChannel(channelName) {
+  console.log("create channel " + channelName);
+}
+
+// Gets the display name associated with the given user ID
+// Don't really want this to be async but this seemed like the best way without doing something much more complicated
+// Given how small this project is and how few messages/users will be posted, it'd probably have been simpler to just hit the database every time
 async function getDisplayName(uid) {
   let displayName = uidToDisplayname[uid];
 

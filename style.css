@@ -84,3 +84,19 @@ a:visited {
     margin-right: 1rem;
     transform: translateY(25%);
 }
+
+#channel-manager>p {
+    display:inline;
+}
+
+.verysmalltext {
+    font-size: 7px;
+}
+
+.greentext {
+    color: green;
+}
+
+.redtext {
+    color: red;
+}
