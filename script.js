@@ -23,7 +23,6 @@ const app = initializeApp(firebaseConfig);
 const db = rtdb.getDatabase(app);
 const titleRef = rtdb.ref(db, "/");
 const channelsRef = rtdb.child(titleRef, "channels");
-//const messagesRef = rtdb.child(titleRef, "messages");
 const usersRef = rtdb.child(titleRef, "users");
 
 let currChannelRef = null; // ref for whatever the currently viewed channel is at any given time
@@ -40,8 +39,11 @@ onAuthStateChanged(auth, (usr) => { // automatically log in if authed
 
 // User data (move to cloud verification at some point)
 let user = null;
+let userRole = null;
 let uidToDisplayname = {}; // dictionary that maps uids to display names so we're not constantly asking the db
 let loggedin = false;
+
+let sysInt = 0; // basically a singleton for setting id for system messages
 
 // == Set up event listeners ==
 // Email & Password login
@@ -105,7 +107,6 @@ $(".reset-password").click(function() {
   $("#forgot-password").show();
 });
 
-
 // Signout button
 $("#signout-button").click(function() {
   signOut(auth).then(function() {
@@ -163,7 +164,6 @@ function initChatFeed() {
 
   rtdb.onChildAdded(currMessagesRef, ss => {
     renderMessage(ss.key, ss.toJSON());
-    $("#chat-feed").scrollTop($("#chat-feed")[0].scrollHeight) // scroll to new message
   });
 
   $("#start-view").hide();
@@ -175,11 +175,22 @@ function initChatFeed() {
     $('#current-user').html(sanitizeString(name));
   });
 
+  // get user role
+  let userRoleRef = rtdb.child(usersRef, user.uid + "/role");
+  rtdb.get(userRoleRef).then((ss) => {
+    userRole = ss.toJSON();
+  }).catch((error) => {
+    console.log(error.message);
+  });
+
   rtdb.onChildAdded(channelsRef, (ss) => {
     let option = document.createElement("option");
     option.innerHTML = sanitizeString(ss.toJSON().name);
     option.id = ss.key;
     $("#channel-select").append(option);
+    if(option.id == "main") {
+      option.selected = true;
+    }
   });
 
   loggedin = true;
@@ -240,10 +251,35 @@ function renderMessage(msgId, msgObj) {
   let msgContainer = document.createElement("div");
   msgContainer.id = msgId;
   msgContainer.className = "message-container";
+
+  let messageMetadata = document.createElement("div");
+  messageMetadata.className = "message-metadata";
+
+  let messageContent = document.createElement("div");
+  messageContent.className = "message-content";
+
   getDisplayName(msgObj.author).then((name) => {
-    msgContainer.innerHTML = "<b>" + sanitizeString(name) + "</b>: " + sanitizeString(msgObj.content) + " | sent at " + sanitizeString(msgObj.time.toString());
+    messageMetadata.innerHTML = "<p><b>" + sanitizeString(name) + "</b> " + sanitizeString(new Date(parseInt(msgObj.time)).toLocaleString()) + "</p>";
+    messageContent.innerHTML = sanitizeString(msgObj.content);
+
+    msgContainer.append(messageMetadata);
+    msgContainer.append(messageContent);
     $('#chat-feed').append(msgContainer);
-  })
+
+    if(userRole == "admin") {
+      let deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "delete-button";
+      deleteButton.innerHTML = "Delete";
+      deleteButton.addEventListener("click", function() {
+        deleteMessage(msgId);
+      });
+
+      messageMetadata.append(deleteButton);
+    }
+
+    $("#chat-feed").scrollTop($("#chat-feed")[0].scrollHeight) // scroll to new message
+  });
 }
 
 // Submit login info
@@ -269,7 +305,8 @@ function registerSubmit() {
   let registerUsername = $("#register-username").val().trim();
 
   // let's not have empty usernames
-  if(registerUsername.length < 1) {
+  // or usernames that are way too long
+  if(registerUsername.length < 1 || registerUsername.length > 30) {
     return;
   }
 
@@ -318,8 +355,6 @@ function sendPasswordEmail() {
 // Handles everything related to changing channels
 // (clear messages, disconnect listener for previous channel, set up new channel)
 function setChannel(channelId) {
-  console.log("set channel to " + channelId);
-
   // disconnect previous channel
   rtdb.off(currChannelRef);
   rtdb.off(currMessagesRef);
@@ -340,11 +375,37 @@ function setChannel(channelId) {
 // Creates a new channel with the given name
 function createChannel(channelName) {
   console.log("create channel " + channelName);
+
+  if(userRole == "admin") {
+    rtdb.push(channelsRef, {name: channelName});
+  } 
+  else {
+    postSystemMessage("Only admins can create new channels.");
+  }
+}
+
+// Deletes message (admin only, in theory)
+function deleteMessage(msgId) {
+  if(userRole == "admin") {
+    let msgRef = rtdb.child(currMessagesRef, msgId);
+
+    rtdb.remove(msgRef)
+      .then(function() {
+        $("#" + msgId).remove();
+      })
+      .catch((error) => {
+        postSystemMessage(error.message)
+      }
+    );
+  }
+  else {
+    postSystemMessage("Hey, you're not supposed to do that!");
+  }
 }
 
 // Gets the display name associated with the given user ID
 // Don't really want this to be async but this seemed like the best way without doing something much more complicated
-// Given how small this project is and how few messages/users will be posted, it'd probably have been simpler to just hit the database every time
+// Given how small this project is and how few messages/users will be posted, it'd probably have been simpler/better to just hit the database for every message
 async function getDisplayName(uid) {
   let displayName = uidToDisplayname[uid];
 
@@ -358,4 +419,27 @@ async function getDisplayName(uid) {
     uidToDisplayname[uid] = displayName;
     return displayName;
   }
+}
+
+// Posts a message seen only by the user (i.e. it does not get sent to others)
+// Used for error messages and such
+// If I did this again I'd design the sendMessage function so that it could be reused for this instead of reimplementing most of it here
+function postSystemMessage(msgText) {
+  let msgContainer = document.createElement("div");
+  msgContainer.id = "system" + parseInt(sysInt);
+  msgContainer.className = "message-container";
+
+  let messageMetadata = document.createElement("div");
+  messageMetadata.className = "message-metadata";
+
+  let messageContent = document.createElement("div");
+  messageContent.className = "message-content";
+
+  messageMetadata.innerHTML = "<p><b>SYSTEM</b></p>";
+  messageContent.innerHTML = sanitizeString(msgText);
+
+  msgContainer.append(messageMetadata);
+  msgContainer.append(messageContent);
+  $('#chat-feed').append(msgContainer);
+  $("#chat-feed").scrollTop($("#chat-feed")[0].scrollHeight) // scroll to new message
 }

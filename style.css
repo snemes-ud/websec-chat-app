@@ -28,24 +28,12 @@
 
 #send-message-container {
     transform: translateY(12.5%);
-
 }
 
 #message-text {
     font-size: 1rem;
     width: 500px;
 }
-
-/*
-#chat-feed>.message-container:last-child {
-    scroll-snap-align: end;
-}
-*/
-
-.message-container {
-    padding: 7px;
-}
-
 
 #chat-feed>.message-container:nth-child(odd) {
     background: rgb(140,140,140);
@@ -88,7 +76,9 @@ a:visited {
 #channel-manager>p {
     display:inline;
 }
-
+/*.smalltext {
+    font-size: 0.8rem;
+}*/
 .verysmalltext {
     font-size: 7px;
 }
@@ -99,4 +89,12 @@ a:visited {
 
 .redtext {
     color: red;
+}
+
+.message-metadata>p {
+   margin: 0;
+}
+
+.message-container {
+   padding: 7px;
 }
