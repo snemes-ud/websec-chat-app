@@ -351,7 +351,10 @@ function registerSubmit() {
         rtdb.set(newUserRef, {
           displayName: registerUsername,
           role: "user"
-        }).then(initChatFeed());
+        }).then(function() {
+          uidToDisplayname[user.uid] = registerUsername;
+          initChatFeed();
+        });
       }
     })
     .catch((error) => {
