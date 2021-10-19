@@ -351,10 +351,8 @@ function registerSubmit() {
         rtdb.set(newUserRef, {
           displayName: registerUsername,
           role: "user"
-        });
+        }).then(initChatFeed());
       }
-
-      initChatFeed();
     })
     .catch((error) => {
       console.log("Register failed: " + error.message);
