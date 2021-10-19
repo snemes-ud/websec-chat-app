@@ -229,18 +229,40 @@ function parseForCommand(str) {
 
   let split = str.split(" ");
   if(split.length != 2) {
+    postSystemMessage("Commands expect 1 argument");
     return false;
   }
   else if(split[0] == "/createchannel") {
     let channelName = split[1];
     if(channelName.length < 1 || channelName.length > 50) {
-      return;
+      return true;
     }
 
     createChannel(channelName);
 
     $('#message-text')[0].value = "";
     return true;
+  }
+  else if(split[0] == "/changename") {
+    let newDisplayName = split[1].trim();
+    if(newDisplayName.length < 1 || newDisplayName.length > 30) {
+      postSystemMessage("Username must be 1-30 characters long.");
+      return true;
+    }
+    else {
+      let tmpUserRef = rtdb.child(usersRef, user.uid);
+      rtdb.update(tmpUserRef, { "displayName": newDisplayName })
+        .then(function() {
+          $('#message-text')[0].value = "";
+          postSystemMessage("Username updated. You and other users must refresh to see the change.");
+        })
+        .catch((error) => {
+          postSystemMessage("Error: " + error.message);
+        }
+      );
+      
+      return true;
+    }
   }
 
   return false;
